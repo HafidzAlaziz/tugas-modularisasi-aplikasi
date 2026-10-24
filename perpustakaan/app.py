@@ -4,7 +4,17 @@ from flask import Flask, request, jsonify, render_template_string
 import json, os, datetime
 
 app = Flask(__name__)
-DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
+
+from config import (
+    DATA_FILE,
+    BATAS_PINJAM,
+    LAMA_PINJAM_HARI,
+    TARIF_DENDA_PER_HARI,
+    MAKSIMAL_DENDA,
+    PREFIX_KODE_PINJAM,
+    PANJANG_DIGIT_KODE,
+)
+from utils.format import format_rupiah
 
 NAV = '<nav><a href="/">Katalog</a> | <a href="/pinjam">Pinjam</a> | <a href="/kembali">Kembalikan</a> | <a href="/peminjaman">Daftar Peminjaman</a> | <a href="/terlambat">Terlambat</a></nav>'
 
@@ -53,7 +63,7 @@ def pinjam():
             pesan = "Buku tidak ditemukan"
         else:
             aktif = [p for p in data["peminjaman"] if p["anggota"] == id_anggota and p["tgl_kembali"] is None]
-            batas = 10 if anggota["tipe"] == "dosen" else 3
+            batas = BATAS_PINJAM.get(anggota["tipe"], 3)
             dipinjam = len([p for p in data["peminjaman"] if p["isbn"] == isbn and p["tgl_kembali"] is None])
             if len(aktif) >= batas:
                 pesan = "Batas pinjam tercapai (" + str(batas) + " buku)"
@@ -61,9 +71,9 @@ def pinjam():
                 pesan = "Semua eksemplar sedang dipinjam"
             else:
                 hari_ini = datetime.date.today()
-                lama = 14 if anggota["tipe"] == "dosen" else 7
+                lama = LAMA_PINJAM_HARI.get(anggota["tipe"], 7)
                 jatuh_tempo = hari_ini + datetime.timedelta(days=lama)
-                id_baru = "PJ" + str(len(data["peminjaman"]) + 1).zfill(4)
+                id_baru = PREFIX_KODE_PINJAM + str(len(data["peminjaman"]) + 1).zfill(PANJANG_DIGIT_KODE)
                 data["peminjaman"].append({"id": id_baru, "isbn": isbn, "anggota": id_anggota, "tgl_pinjam": hari_ini.isoformat(),
                                            "jatuh_tempo": jatuh_tempo.isoformat(), "tgl_kembali": None, "denda": 0})
                 with open(DATA_FILE, "w", encoding="utf-8") as f:
@@ -98,14 +108,12 @@ def kembali():
                     tipe = a["tipe"]
             denda = 0
             if telat > 0 and tipe != "dosen":
-                denda = telat * 1000
-                if denda > 50000:
-                    denda = 50000
+                denda = min (telat * TARIF_DENDA_PER_HARI, MAKSIMAL_DENDA)
             pinjaman["tgl_kembali"] = hari_ini.isoformat()
             pinjaman["denda"] = denda
             with open(DATA_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-            pesan = "Buku diterima. Denda: Rp " + "{:,}".format(denda).replace(",", ".")
+            pesan = "Buku diterima. Denda: " + format_rupiah(denda)
     return render_template_string("""
     <html><head><title>Kembali</title><style>body{font-family:Georgia,serif;margin:30px}</style></head>
     <body>""" + NAV + """<h1>Pengembalian</h1><p><b>{{ pesan }}</b></p>
@@ -166,7 +174,7 @@ def daftar_peminjaman():
                 judul = b["judul"]
         warna = {"kembali": "#2e7d32", "terlambat": "#c62828", "dipinjam": "#1565c0"}[st]
         baris += "<tr><td>" + p["id"] + "</td><td>" + nama + " (" + p["anggota"] + ")</td><td>" + judul + "</td><td>" + p["tgl_pinjam"] + "</td>"
-        baris += "<td>" + p["jatuh_tempo"] + "</td><td>" + (p["tgl_kembali"] or "-") + "</td><td>Rp " + "{:,}".format(p["denda"]).replace(",", ".") + "</td>"
+        baris += "<td>" + p["jatuh_tempo"] + "</td><td>" + (p["tgl_kembali"] or "-") + "</td><td>" + format_rupiah(p["denda"]) + "</td>"
         baris += "<td style='color:" + warna + "'><b>" + st + "</b></td></tr>"
     return render_template_string("""
     <html><head><title>Daftar Peminjaman</title><style>body{font-family:Georgia,serif;margin:30px} td,th{border-bottom:1px solid #ddd;padding:6px 12px}</style></head>
@@ -206,20 +214,16 @@ def api_pinjam():
     if buku is None:
         return jsonify({"error": "Buku tidak ditemukan"}), 404
     aktif = [p for p in data["peminjaman"] if p["anggota"] == id_anggota and p["tgl_kembali"] is None]
-    if anggota["tipe"] == "dosen":
-        batas = 10
-    else:
-        batas = 3
+    batas = BATAS_PINJAM.get(anggota["tipe"], 3)
     if len(aktif) >= batas:
         return jsonify({"error": "Batas pinjam tercapai (" + str(batas) + " buku)"}), 400
     dipinjam = len([p for p in data["peminjaman"] if p["isbn"] == isbn and p["tgl_kembali"] is None])
     if buku["eksemplar"] - dipinjam <= 0:
         return jsonify({"error": "Semua eksemplar sedang dipinjam"}), 400
     tgl = datetime.date.fromisoformat(body["tanggal"]) if body.get("tanggal") else datetime.date.today()
-    lama = 7
-    if anggota["tipe"] == "dosen":
-        lama = 14
-    pinjaman = {"id": "PJ" + str(len(data["peminjaman"]) + 1).zfill(4), "isbn": isbn, "anggota": id_anggota, "tgl_pinjam": tgl.isoformat(),
+    lama = LAMA_PINJAM_HARI.get(anggota["tipe"], 7)
+    id_pinjam = PREFIX_KODE_PINJAM + str(len(data["peminjaman"]) + 1).zfill(PANJANG_DIGIT_KODE)
+    pinjaman = {"id": id_pinjam, "isbn": isbn, "anggota": id_anggota, "tgl_pinjam": tgl.isoformat(),
                 "jatuh_tempo": (tgl + datetime.timedelta(days=lama)).isoformat(), "tgl_kembali": None, "denda": 0}
     data["peminjaman"].append(pinjaman)
     with open(DATA_FILE, "w", encoding="utf-8") as f:
@@ -240,7 +244,7 @@ def api_kembali():
     anggota = next(a for a in data["anggota"] if a["id"] == pinjaman["anggota"])
     denda = 0
     if telat > 0 and anggota["tipe"] != "dosen":
-        denda = min(telat * 1000, 50000)
+        denda = min(telat * TARIF_DENDA_PER_HARI, MAKSIMAL_DENDA)
     pinjaman["tgl_kembali"] = tgl.isoformat()
     pinjaman["denda"] = denda
     with open(DATA_FILE, "w", encoding="utf-8") as f:
