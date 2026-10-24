@@ -1,0 +1,24 @@
+{
+  "buku": [
+    {"isbn": "9780132350884", "judul": "Clean Code", "penulis": "Robert C. Martin", "eksemplar": 3},
+    {"isbn": "9780735619678", "judul": "Code Complete", "penulis": "Steve McConnell", "eksemplar": 2},
+    {"isbn": "9780201633610", "judul": "Design Patterns", "penulis": "Gamma, Helm, Johnson, Vlissides", "eksemplar": 1},
+    {"isbn": "9780134494166", "judul": "Clean Architecture", "penulis": "Robert C. Martin", "eksemplar": 2},
+    {"isbn": "9781292096131", "judul": "Software Engineering", "penulis": "Ian Sommerville", "eksemplar": 4},
+    {"isbn": "9780134757599", "judul": "Refactoring", "penulis": "Martin Fowler", "eksemplar": 2},
+    {"isbn": "9789792248616", "judul": "Laskar Pelangi", "penulis": "Andrea Hirata", "eksemplar": 5},
+    {"isbn": "9786020332956", "judul": "Bumi Manusia", "penulis": "Pramoedya Ananta Toer", "eksemplar": 2}
+  ],
+  "anggota": [
+    {"id": "A001", "nama": "Rizky Pratama", "tipe": "mahasiswa", "aktif": true},
+    {"id": "A002", "nama": "Siti Rahma", "tipe": "mahasiswa", "aktif": true},
+    {"id": "A003", "nama": "Dr. Hasan Basri", "tipe": "dosen", "aktif": true},
+    {"id": "A004", "nama": "Dimas Ardi", "tipe": "mahasiswa", "aktif": false}
+  ],
+  "peminjaman": [
+    {"id": "PJ0001", "isbn": "9780201633610", "anggota": "A001", "tgl_pinjam": "2026-09-20", "jatuh_tempo": "2026-09-27", "tgl_kembali": null, "denda": 0},
+    {"id": "PJ0002", "isbn": "9780132350884", "anggota": "A001", "tgl_pinjam": "2026-10-01", "jatuh_tempo": "2026-10-08", "tgl_kembali": null, "denda": 0},
+    {"id": "PJ0003", "isbn": "9780735619678", "anggota": "A002", "tgl_pinjam": "2026-09-01", "jatuh_tempo": "2026-09-08", "tgl_kembali": "2026-09-12", "denda": 4000},
+    {"id": "PJ0004", "isbn": "9781292096131", "anggota": "A003", "tgl_pinjam": "2026-09-25", "jatuh_tempo": "2026-10-09", "tgl_kembali": null, "denda": 0}
+  ]
+}
