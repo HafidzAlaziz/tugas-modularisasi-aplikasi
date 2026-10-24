@@ -3,12 +3,4 @@
 #   docker compose up --build              (ketujuh aplikasi 5001–5007 + contoh Laundry 5008/5009)
 #   docker compose up --build kasir-toko   (satu aplikasi)
 include:
-  - kasir-toko/docker-compose.yml
   - perpustakaan/docker-compose.yml
-  - reservasi-klinik/docker-compose.yml
-  - dompet-keuangan/docker-compose.yml
-  - tiket-event/docker-compose.yml
-  - kuis-online/docker-compose.yml
-  - donasi-zis/docker-compose.yml
-  - contoh-laundry-kiloan/sebelum/docker-compose.yml
-  - contoh-laundry-kiloan/sesudah/docker-compose.yml

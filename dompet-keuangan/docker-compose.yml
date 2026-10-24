@@ -1,8 +1,0 @@
-# Jalankan dari folder ini:  docker compose up --build   →  http://localhost:5004
-# Folder ini di-mount ke /app: perubahan kode langsung terbaca (Flask debug reload),
-# dan perubahan data.json tersimpan di folder ini.
-services:
-  dompet-keuangan:
-    build: .
-    ports: ["5004:5000"]
-    volumes: [".:/app"]

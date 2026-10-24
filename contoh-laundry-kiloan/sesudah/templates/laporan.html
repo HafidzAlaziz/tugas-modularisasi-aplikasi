@@ -1,4 +1,0 @@
-<html><body style="font-family:sans-serif;margin:30px"><a href="/">← kembali</a><h1>Laporan {{ lap.tanggal }}</h1>
-<form><input type="date" name="tanggal" value="{{ lap.tanggal }}"><button>Lihat</button></form>
-<p>{{ lap.jumlah_nota }} nota · {{ lap.total_kg }} kg · {{ lap.pendapatan|rupiah }}</p>
-<ul>{% for l, c in lap.per_layanan.items() %}<li>{{ l }}: {{ c }}</li>{% endfor %}</ul></body></html>

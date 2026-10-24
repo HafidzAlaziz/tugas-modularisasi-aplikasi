@@ -1,6 +1,0 @@
-# Versi MODULAR. Jalankan dari folder ini:  docker compose up --build   →  http://localhost:5009
-services:
-  laundry-sesudah:
-    build: .
-    ports: ["5009:5000"]
-    volumes: [".:/app"]
