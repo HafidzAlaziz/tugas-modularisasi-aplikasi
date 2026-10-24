@@ -1,18 +1,17 @@
-# Perpustakaan Kampus (sirkulasi buku) — aplikasi MONOLITIK: semua kode ada di satu file ini.
-# Tugas mahasiswa: pecah menjadi modul tanpa mengubah perilakunya (lihat README.md).
 import datetime
 from flask import Flask, request, jsonify, render_template_string
 
-from config import (
-    DATA_FILE,
-    BATAS_PINJAM,
-    LAMA_PINJAM_HARI,
-    TARIF_DENDA_PER_HARI,
-    MAKSIMAL_DENDA,
-    PREFIX_KODE_PINJAM,
-    PANJANG_DIGIT_KODE,
-)
+from config import DATA_FILE
 from repositori import RepositoriJson
+from layanan import (
+    GalatLayanan,
+    cari_katalog,
+    pinjam_buku,
+    kembalikan_buku,
+    daftar_peminjaman_terlambat,
+    daftar_semua_peminjaman,
+    riwayat_anggota,
+)
 from utils.format import format_rupiah
 
 app = Flask(__name__)
@@ -23,16 +22,9 @@ NAV = '<nav><a href="/">Katalog</a> | <a href="/pinjam">Pinjam</a> | <a href="/k
 
 @app.route("/")
 def index():
+    q = request.args.get("q", "").strip()
     data = repo.muat()
-    q = request.args.get("q", "").strip().lower()
-    hasil = []
-    for b in data["buku"]:
-        if q == "" or q in b["judul"].lower() or q in b["penulis"].lower():
-            dipinjam = 0
-            for p in data["peminjaman"]:
-                if p["isbn"] == b["isbn"] and p["tgl_kembali"] is None:
-                    dipinjam += 1
-            hasil.append({"isbn": b["isbn"], "judul": b["judul"], "penulis": b["penulis"], "tersedia": b["eksemplar"] - dipinjam, "eksemplar": b["eksemplar"]})
+    hasil = cari_katalog(data["buku"], data["peminjaman"], q)
     return render_template_string("""
     <html><head><title>Perpustakaan</title><style>body{font-family:Georgia,serif;margin:30px} td,th{border-bottom:1px solid #ddd;padding:6px 12px}</style></head>
     <body>""" + NAV + """<h1>Katalog Buku</h1>
@@ -46,38 +38,14 @@ def index():
 def pinjam():
     pesan = ""
     if request.method == "POST":
-        data = repo.muat()
         id_anggota = request.form.get("anggota", "").strip()
         isbn = request.form.get("isbn", "").strip()
-        anggota = None
-        for a in data["anggota"]:
-            if a["id"] == id_anggota:
-                anggota = a
-        buku = None
-        for b in data["buku"]:
-            if b["isbn"] == isbn:
-                buku = b
-        if anggota is None or not anggota["aktif"]:
-            pesan = "Anggota tidak ditemukan atau tidak aktif"
-        elif buku is None:
-            pesan = "Buku tidak ditemukan"
-        else:
-            aktif = [p for p in data["peminjaman"] if p["anggota"] == id_anggota and p["tgl_kembali"] is None]
-            batas = BATAS_PINJAM.get(anggota["tipe"], 3)
-            dipinjam = len([p for p in data["peminjaman"] if p["isbn"] == isbn and p["tgl_kembali"] is None])
-            if len(aktif) >= batas:
-                pesan = "Batas pinjam tercapai (" + str(batas) + " buku)"
-            elif buku["eksemplar"] - dipinjam <= 0:
-                pesan = "Semua eksemplar sedang dipinjam"
-            else:
-                hari_ini = datetime.date.today()
-                lama = LAMA_PINJAM_HARI.get(anggota["tipe"], 7)
-                jatuh_tempo = hari_ini + datetime.timedelta(days=lama)
-                id_baru = PREFIX_KODE_PINJAM + str(len(data["peminjaman"]) + 1).zfill(PANJANG_DIGIT_KODE)
-                data["peminjaman"].append({"id": id_baru, "isbn": isbn, "anggota": id_anggota, "tgl_pinjam": hari_ini.isoformat(),
-                                           "jatuh_tempo": jatuh_tempo.isoformat(), "tgl_kembali": None, "denda": 0})
-                repo.simpan(data)
-                pesan = "Berhasil. Kode " + id_baru + ", kembalikan paling lambat " + jatuh_tempo.strftime("%d-%m-%Y")
+        try:
+            p = pinjam_buku(repo, id_anggota, isbn)
+            jt = datetime.date.fromisoformat(p["jatuh_tempo"])
+            pesan = "Berhasil. Kode " + p["id"] + ", kembalikan paling lambat " + jt.strftime("%d-%m-%Y")
+        except GalatLayanan as e:
+            pesan = e.pesan
     return render_template_string("""
     <html><head><title>Pinjam</title><style>body{font-family:Georgia,serif;margin:30px}</style></head>
     <body>""" + NAV + """<h1>Peminjaman</h1><p><b>{{ pesan }}</b></p>
@@ -89,28 +57,12 @@ def pinjam():
 def kembali():
     pesan = ""
     if request.method == "POST":
-        data = repo.muat()
         kode = request.form.get("kode", "").strip()
-        pinjaman = None
-        for p in data["peminjaman"]:
-            if p["id"] == kode and p["tgl_kembali"] is None:
-                pinjaman = p
-        if pinjaman is None:
-            pesan = "Kode peminjaman tidak ditemukan atau sudah dikembalikan"
-        else:
-            hari_ini = datetime.date.today()
-            telat = (hari_ini - datetime.date.fromisoformat(pinjaman["jatuh_tempo"])).days
-            tipe = ""
-            for a in data["anggota"]:
-                if a["id"] == pinjaman["anggota"]:
-                    tipe = a["tipe"]
-            denda = 0
-            if telat > 0 and tipe != "dosen":
-                denda = min (telat * TARIF_DENDA_PER_HARI, MAKSIMAL_DENDA)
-            pinjaman["tgl_kembali"] = hari_ini.isoformat()
-            pinjaman["denda"] = denda
-            repo.simpan(data)
-            pesan = "Buku diterima. Denda: " + format_rupiah(denda)
+        try:
+            res = kembalikan_buku(repo, kode)
+            pesan = "Buku diterima. Denda: " + format_rupiah(res["denda"])
+        except GalatLayanan as e:
+            pesan = e.pesan
     return render_template_string("""
     <html><head><title>Kembali</title><style>body{font-family:Georgia,serif;margin:30px}</style></head>
     <body>""" + NAV + """<h1>Pengembalian</h1><p><b>{{ pesan }}</b></p>
@@ -120,20 +72,7 @@ def kembali():
 
 @app.route("/terlambat")
 def terlambat():
-    data = repo.muat()
-    hari_ini = datetime.date.today()
-    daftar = []
-    for p in data["peminjaman"]:
-        if p["tgl_kembali"] is None and datetime.date.fromisoformat(p["jatuh_tempo"]) < hari_ini:
-            nama = ""
-            for a in data["anggota"]:
-                if a["id"] == p["anggota"]:
-                    nama = a["nama"]
-            judul = ""
-            for b in data["buku"]:
-                if b["isbn"] == p["isbn"]:
-                    judul = b["judul"]
-            daftar.append({"id": p["id"], "nama": nama, "judul": judul, "hari": (hari_ini - datetime.date.fromisoformat(p["jatuh_tempo"])).days})
+    daftar = daftar_peminjaman_terlambat(repo)
     return render_template_string("""
     <html><head><title>Terlambat</title><style>body{font-family:Georgia,serif;margin:30px}</style></head>
     <body>""" + NAV + """<h1>Peminjaman Terlambat</h1>
@@ -143,34 +82,15 @@ def terlambat():
 
 @app.route("/peminjaman")
 def daftar_peminjaman():
-    data = repo.muat()
     status = request.args.get("status", "")
     id_anggota = request.args.get("anggota", "").strip()
-    hari_ini = datetime.date.today()
+    daftar = daftar_semua_peminjaman(repo, status or None, id_anggota or None)
     baris = ""
-    for p in data["peminjaman"]:
-        if p["tgl_kembali"] is not None:
-            st = "kembali"
-        elif datetime.date.fromisoformat(p["jatuh_tempo"]) < hari_ini:
-            st = "terlambat"
-        else:
-            st = "dipinjam"
-        if status != "" and st != status:
-            continue
-        if id_anggota != "" and p["anggota"] != id_anggota:
-            continue
-        nama = ""
-        for a in data["anggota"]:
-            if a["id"] == p["anggota"]:
-                nama = a["nama"]
-        judul = ""
-        for b in data["buku"]:
-            if b["isbn"] == p["isbn"]:
-                judul = b["judul"]
-        warna = {"kembali": "#2e7d32", "terlambat": "#c62828", "dipinjam": "#1565c0"}[st]
-        baris += "<tr><td>" + p["id"] + "</td><td>" + nama + " (" + p["anggota"] + ")</td><td>" + judul + "</td><td>" + p["tgl_pinjam"] + "</td>"
+    for p in daftar:
+        warna = {"kembali": "#2e7d32", "terlambat": "#c62828", "dipinjam": "#1565c0"}[p["status"]]
+        baris += "<tr><td>" + p["id"] + "</td><td>" + p["nama"] + " (" + p["anggota"] + ")</td><td>" + p["judul"] + "</td><td>" + p["tgl_pinjam"] + "</td>"
         baris += "<td>" + p["jatuh_tempo"] + "</td><td>" + (p["tgl_kembali"] or "-") + "</td><td>" + format_rupiah(p["denda"]) + "</td>"
-        baris += "<td style='color:" + warna + "'><b>" + st + "</b></td></tr>"
+        baris += "<td style='color:" + warna + "'><b>" + p["status"] + "</b></td></tr>"
     return render_template_string("""
     <html><head><title>Daftar Peminjaman</title><style>body{font-family:Georgia,serif;margin:30px} td,th{border-bottom:1px solid #ddd;padding:6px 12px}</style></head>
     <body>""" + NAV + """<h1>Daftar Peminjaman</h1>
@@ -184,107 +104,58 @@ def daftar_peminjaman():
 
 @app.route("/api/buku")
 def api_buku():
+    q = request.args.get("q", "").strip()
     data = repo.muat()
-    q = request.args.get("q", "").strip().lower()
-    hasil = []
-    for b in data["buku"]:
-        if q == "" or q in b["judul"].lower() or q in b["penulis"].lower():
-            dipinjam = len([p for p in data["peminjaman"] if p["isbn"] == b["isbn"] and p["tgl_kembali"] is None])
-            hasil.append(dict(b, tersedia=b["eksemplar"] - dipinjam))
-    return jsonify(hasil)
+    return jsonify(cari_katalog(data["buku"], data["peminjaman"], q))
 
 
 @app.route("/api/pinjam", methods=["POST"])
 def api_pinjam():
-    data = repo.muat()
     body = request.get_json(silent=True) or {}
-    id_anggota = body.get("anggota", "")
-    isbn = body.get("isbn", "")
-    anggota = next((a for a in data["anggota"] if a["id"] == id_anggota), None)
-    buku = next((b for b in data["buku"] if b["isbn"] == isbn), None)
-    if anggota is None or not anggota["aktif"]:
-        return jsonify({"error": "Anggota tidak ditemukan atau tidak aktif"}), 400
-    if buku is None:
-        return jsonify({"error": "Buku tidak ditemukan"}), 404
-    aktif = [p for p in data["peminjaman"] if p["anggota"] == id_anggota and p["tgl_kembali"] is None]
-    batas = BATAS_PINJAM.get(anggota["tipe"], 3)
-    if len(aktif) >= batas:
-        return jsonify({"error": "Batas pinjam tercapai (" + str(batas) + " buku)"}), 400
-    dipinjam = len([p for p in data["peminjaman"] if p["isbn"] == isbn and p["tgl_kembali"] is None])
-    if buku["eksemplar"] - dipinjam <= 0:
-        return jsonify({"error": "Semua eksemplar sedang dipinjam"}), 400
-    tgl = datetime.date.fromisoformat(body["tanggal"]) if body.get("tanggal") else datetime.date.today()
-    lama = LAMA_PINJAM_HARI.get(anggota["tipe"], 7)
-    id_pinjam = PREFIX_KODE_PINJAM + str(len(data["peminjaman"]) + 1).zfill(PANJANG_DIGIT_KODE)
-    pinjaman = {"id": id_pinjam, "isbn": isbn, "anggota": id_anggota, "tgl_pinjam": tgl.isoformat(),
-                "jatuh_tempo": (tgl + datetime.timedelta(days=lama)).isoformat(), "tgl_kembali": None, "denda": 0}
-    data["peminjaman"].append(pinjaman)
-    repo.simpan(data)
-    return jsonify(pinjaman), 201
+    tgl = datetime.date.fromisoformat(body["tanggal"]) if body.get("tanggal") else None
+    try:
+        pinjaman = pinjam_buku(repo, body.get("anggota", ""), body.get("isbn", ""), tgl)
+        return jsonify(pinjaman), 201
+    except GalatLayanan as e:
+        return jsonify({"error": e.pesan}), e.status
 
 
 @app.route("/api/kembali", methods=["POST"])
 def api_kembali():
-    data = repo.muat()
     body = request.get_json(silent=True) or {}
-    pinjaman = next((p for p in data["peminjaman"] if p["id"] == body.get("kode") and p["tgl_kembali"] is None), None)
-    if pinjaman is None:
-        return jsonify({"error": "Kode peminjaman tidak ditemukan atau sudah dikembalikan"}), 404
-    tgl = datetime.date.fromisoformat(body["tanggal"]) if body.get("tanggal") else datetime.date.today()
-    telat = (tgl - datetime.date.fromisoformat(pinjaman["jatuh_tempo"])).days
-    anggota = next(a for a in data["anggota"] if a["id"] == pinjaman["anggota"])
-    denda = 0
-    if telat > 0 and anggota["tipe"] != "dosen":
-        denda = min(telat * TARIF_DENDA_PER_HARI, MAKSIMAL_DENDA)
-    pinjaman["tgl_kembali"] = tgl.isoformat()
-    pinjaman["denda"] = denda
-    repo.simpan(data)
-    return jsonify({"kode": pinjaman["id"], "terlambat_hari": max(telat, 0), "denda": denda})
+    tgl = datetime.date.fromisoformat(body["tanggal"]) if body.get("tanggal") else None
+    try:
+        res = kembalikan_buku(repo, body.get("kode", ""), tgl)
+        return jsonify({"kode": res["kode"], "terlambat_hari": res["terlambat_hari"], "denda": res["denda"]})
+    except GalatLayanan as e:
+        return jsonify({"error": e.pesan}), e.status
 
 
 @app.route("/api/terlambat")
 def api_terlambat():
-    data = repo.muat()
-    tgl = datetime.date.fromisoformat(request.args["tanggal"]) if request.args.get("tanggal") else datetime.date.today()
-    hasil = []
-    for p in data["peminjaman"]:
-        jt = datetime.date.fromisoformat(p["jatuh_tempo"])
-        if p["tgl_kembali"] is None and jt < tgl:
-            hasil.append({"id": p["id"], "anggota": p["anggota"], "isbn": p["isbn"], "terlambat_hari": (tgl - jt).days})
+    tgl = datetime.date.fromisoformat(request.args["tanggal"]) if request.args.get("tanggal") else None
+    daftar = daftar_peminjaman_terlambat(repo, tgl)
+    hasil = [
+        {"id": d["id"], "anggota": d["anggota"], "isbn": d["isbn"], "terlambat_hari": d["terlambat_hari"]}
+        for d in daftar
+    ]
     return jsonify(hasil)
 
 
 @app.route("/api/peminjaman")
 def api_peminjaman():
-    data = repo.muat()
     status = request.args.get("status")
     id_anggota = request.args.get("anggota")
-    tgl = datetime.date.fromisoformat(request.args["tanggal"]) if request.args.get("tanggal") else datetime.date.today()
-    if status not in (None, "dipinjam", "terlambat", "kembali"):
-        return jsonify({"error": "Status harus dipinjam, terlambat, atau kembali"}), 400
-    hasil = []
-    for p in data["peminjaman"]:
-        if p["tgl_kembali"] is not None:
-            st = "kembali"
-        elif datetime.date.fromisoformat(p["jatuh_tempo"]) < tgl:
-            st = "terlambat"
-        else:
-            st = "dipinjam"
-        if (status is None or st == status) and (id_anggota is None or p["anggota"] == id_anggota):
-            anggota = next((a for a in data["anggota"] if a["id"] == p["anggota"]), None)
-            buku = next((b for b in data["buku"] if b["isbn"] == p["isbn"]), None)
-            hasil.append(dict(p, nama=anggota["nama"] if anggota else "", judul=buku["judul"] if buku else "", status=st))
-    return jsonify(hasil)
+    tgl = datetime.date.fromisoformat(request.args["tanggal"]) if request.args.get("tanggal") else None
+    try:
+        return jsonify(daftar_semua_peminjaman(repo, status, id_anggota, tgl))
+    except GalatLayanan as e:
+        return jsonify({"error": e.pesan}), e.status
 
 
 @app.route("/api/anggota/<id_anggota>/riwayat")
 def api_riwayat(id_anggota):
-    data = repo.muat()
-    riwayat = [p for p in data["peminjaman"] if p["anggota"] == id_anggota]
-    total_denda = 0
-    for p in riwayat:
-        total_denda += p["denda"]
-    return jsonify({"anggota": id_anggota, "jumlah_pinjam": len(riwayat), "sedang_dipinjam": len([p for p in riwayat if p["tgl_kembali"] is None]), "total_denda": total_denda})
+    return jsonify(riwayat_anggota(repo, id_anggota))
 
 
 if __name__ == "__main__":
