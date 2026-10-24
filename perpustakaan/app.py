@@ -1,9 +1,7 @@
 # Perpustakaan Kampus (sirkulasi buku) — aplikasi MONOLITIK: semua kode ada di satu file ini.
 # Tugas mahasiswa: pecah menjadi modul tanpa mengubah perilakunya (lihat README.md).
+import datetime
 from flask import Flask, request, jsonify, render_template_string
-import json, os, datetime
-
-app = Flask(__name__)
 
 from config import (
     DATA_FILE,
@@ -14,15 +12,18 @@ from config import (
     PREFIX_KODE_PINJAM,
     PANJANG_DIGIT_KODE,
 )
+from repositori import RepositoriJson
 from utils.format import format_rupiah
+
+app = Flask(__name__)
+repo = RepositoriJson(DATA_FILE)
 
 NAV = '<nav><a href="/">Katalog</a> | <a href="/pinjam">Pinjam</a> | <a href="/kembali">Kembalikan</a> | <a href="/peminjaman">Daftar Peminjaman</a> | <a href="/terlambat">Terlambat</a></nav>'
 
 
 @app.route("/")
 def index():
-    with open(DATA_FILE, encoding="utf-8") as f:
-        data = json.load(f)
+    data = repo.muat()
     q = request.args.get("q", "").strip().lower()
     hasil = []
     for b in data["buku"]:
@@ -45,8 +46,7 @@ def index():
 def pinjam():
     pesan = ""
     if request.method == "POST":
-        with open(DATA_FILE, encoding="utf-8") as f:
-            data = json.load(f)
+        data = repo.muat()
         id_anggota = request.form.get("anggota", "").strip()
         isbn = request.form.get("isbn", "").strip()
         anggota = None
@@ -76,8 +76,7 @@ def pinjam():
                 id_baru = PREFIX_KODE_PINJAM + str(len(data["peminjaman"]) + 1).zfill(PANJANG_DIGIT_KODE)
                 data["peminjaman"].append({"id": id_baru, "isbn": isbn, "anggota": id_anggota, "tgl_pinjam": hari_ini.isoformat(),
                                            "jatuh_tempo": jatuh_tempo.isoformat(), "tgl_kembali": None, "denda": 0})
-                with open(DATA_FILE, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
+                repo.simpan(data)
                 pesan = "Berhasil. Kode " + id_baru + ", kembalikan paling lambat " + jatuh_tempo.strftime("%d-%m-%Y")
     return render_template_string("""
     <html><head><title>Pinjam</title><style>body{font-family:Georgia,serif;margin:30px}</style></head>
@@ -90,8 +89,7 @@ def pinjam():
 def kembali():
     pesan = ""
     if request.method == "POST":
-        with open(DATA_FILE, encoding="utf-8") as f:
-            data = json.load(f)
+        data = repo.muat()
         kode = request.form.get("kode", "").strip()
         pinjaman = None
         for p in data["peminjaman"]:
@@ -111,8 +109,7 @@ def kembali():
                 denda = min (telat * TARIF_DENDA_PER_HARI, MAKSIMAL_DENDA)
             pinjaman["tgl_kembali"] = hari_ini.isoformat()
             pinjaman["denda"] = denda
-            with open(DATA_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+            repo.simpan(data)
             pesan = "Buku diterima. Denda: " + format_rupiah(denda)
     return render_template_string("""
     <html><head><title>Kembali</title><style>body{font-family:Georgia,serif;margin:30px}</style></head>
@@ -123,8 +120,7 @@ def kembali():
 
 @app.route("/terlambat")
 def terlambat():
-    with open(DATA_FILE, encoding="utf-8") as f:
-        data = json.load(f)
+    data = repo.muat()
     hari_ini = datetime.date.today()
     daftar = []
     for p in data["peminjaman"]:
@@ -147,8 +143,7 @@ def terlambat():
 
 @app.route("/peminjaman")
 def daftar_peminjaman():
-    with open(DATA_FILE, encoding="utf-8") as f:
-        data = json.load(f)
+    data = repo.muat()
     status = request.args.get("status", "")
     id_anggota = request.args.get("anggota", "").strip()
     hari_ini = datetime.date.today()
@@ -189,8 +184,7 @@ def daftar_peminjaman():
 
 @app.route("/api/buku")
 def api_buku():
-    with open(DATA_FILE, encoding="utf-8") as f:
-        data = json.load(f)
+    data = repo.muat()
     q = request.args.get("q", "").strip().lower()
     hasil = []
     for b in data["buku"]:
@@ -202,8 +196,7 @@ def api_buku():
 
 @app.route("/api/pinjam", methods=["POST"])
 def api_pinjam():
-    with open(DATA_FILE, encoding="utf-8") as f:
-        data = json.load(f)
+    data = repo.muat()
     body = request.get_json(silent=True) or {}
     id_anggota = body.get("anggota", "")
     isbn = body.get("isbn", "")
@@ -226,15 +219,13 @@ def api_pinjam():
     pinjaman = {"id": id_pinjam, "isbn": isbn, "anggota": id_anggota, "tgl_pinjam": tgl.isoformat(),
                 "jatuh_tempo": (tgl + datetime.timedelta(days=lama)).isoformat(), "tgl_kembali": None, "denda": 0}
     data["peminjaman"].append(pinjaman)
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    repo.simpan(data)
     return jsonify(pinjaman), 201
 
 
 @app.route("/api/kembali", methods=["POST"])
 def api_kembali():
-    with open(DATA_FILE, encoding="utf-8") as f:
-        data = json.load(f)
+    data = repo.muat()
     body = request.get_json(silent=True) or {}
     pinjaman = next((p for p in data["peminjaman"] if p["id"] == body.get("kode") and p["tgl_kembali"] is None), None)
     if pinjaman is None:
@@ -247,15 +238,13 @@ def api_kembali():
         denda = min(telat * TARIF_DENDA_PER_HARI, MAKSIMAL_DENDA)
     pinjaman["tgl_kembali"] = tgl.isoformat()
     pinjaman["denda"] = denda
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    repo.simpan(data)
     return jsonify({"kode": pinjaman["id"], "terlambat_hari": max(telat, 0), "denda": denda})
 
 
 @app.route("/api/terlambat")
 def api_terlambat():
-    with open(DATA_FILE, encoding="utf-8") as f:
-        data = json.load(f)
+    data = repo.muat()
     tgl = datetime.date.fromisoformat(request.args["tanggal"]) if request.args.get("tanggal") else datetime.date.today()
     hasil = []
     for p in data["peminjaman"]:
@@ -267,8 +256,7 @@ def api_terlambat():
 
 @app.route("/api/peminjaman")
 def api_peminjaman():
-    with open(DATA_FILE, encoding="utf-8") as f:
-        data = json.load(f)
+    data = repo.muat()
     status = request.args.get("status")
     id_anggota = request.args.get("anggota")
     tgl = datetime.date.fromisoformat(request.args["tanggal"]) if request.args.get("tanggal") else datetime.date.today()
@@ -291,8 +279,7 @@ def api_peminjaman():
 
 @app.route("/api/anggota/<id_anggota>/riwayat")
 def api_riwayat(id_anggota):
-    with open(DATA_FILE, encoding="utf-8") as f:
-        data = json.load(f)
+    data = repo.muat()
     riwayat = [p for p in data["peminjaman"] if p["anggota"] == id_anggota]
     total_denda = 0
     for p in riwayat:
