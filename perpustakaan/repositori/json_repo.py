@@ -20,3 +20,4 @@ class RepositoriJson:
         """Menyimpan seluruh data ke file JSON."""
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
+

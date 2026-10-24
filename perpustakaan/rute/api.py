@@ -82,3 +82,4 @@ def peminjaman():
 @api.route("/anggota/<id_anggota>/riwayat")
 def riwayat(id_anggota):
     return jsonify(riwayat_anggota(_repo(), id_anggota))
+

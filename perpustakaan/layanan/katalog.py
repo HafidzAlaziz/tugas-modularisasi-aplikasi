@@ -29,3 +29,4 @@ def cari_katalog(
                 "tersedia": tersedia,
             })
     return hasil
+

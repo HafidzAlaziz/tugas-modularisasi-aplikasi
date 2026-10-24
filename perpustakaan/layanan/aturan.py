@@ -45,3 +45,4 @@ def hitung_denda(tipe_anggota: str, tgl_jatuh_tempo: date, tgl_kembali: date) ->
 def generate_id_pinjam(jumlah_pinjaman_sebelumnya: int) -> str:
     """Menghasilkan kode unik peminjaman berurutan, contoh: 'PJ0005'."""
     return PREFIX_KODE_PINJAM + str(jumlah_pinjaman_sebelumnya + 1).zfill(PANJANG_DIGIT_KODE)
+

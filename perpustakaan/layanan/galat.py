@@ -20,3 +20,4 @@ class GalatValidasi(GalatLayanan):
 
 class TidakDitemukan(GalatLayanan):
     status = 404
+

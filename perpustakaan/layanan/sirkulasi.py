@@ -175,3 +175,4 @@ def riwayat_anggota(repo, id_anggota: str) -> dict:
         "sedang_dipinjam": sedang_dipinjam,
         "total_denda": total_denda,
     }
+
