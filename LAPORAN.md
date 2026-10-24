@@ -151,7 +151,169 @@ Tabel pemetaan refaktorisasi dari blok monolitik lama ke fungsi dan modul baru:
 
 ---
 
-## 6. Temuan Code Smell & Inkonsistensi
+## 6. Perbandingan Konkret Kode Sebelum vs Sesudah Modularisasi
+
+Berikut adalah perbandingan langsung (*side-by-side*) cuplikan kode lama yang monolitik dibandingkan dengan kode baru hasil modularisasi:
+
+### Kasus A: Aturan Kalkulasi Denda & Penghilangan *Magic Numbers*
+
+**Sebelum (Kode Monolitik di `app.py` Lama):**
+> Logika denda dan angka aturan `1000` serta `50000` ditulis dua kali secara berbeda di fungsi web dan API:
+```python
+# Di route web /kembali (baris 100-103)
+if telat > 0 and tipe != "dosen":
+    denda = telat * 1000
+    if denda > 50000:
+        denda = 50000
+
+# Di route /api/kembali (baris 241-243)
+denda = 0
+if telat > 0 and anggota["tipe"] != "dosen":
+    denda = min(telat * 1000, 50000)
+```
+
+**Sesudah (Modular: `config.py` dan `layanan/aturan.py`):**
+> Angka aturan dipindah ke konfigurasi, logika denda menjadi satu fungsi murni yang dipakai bersama:
+```python
+# config.py
+TARIF_DENDA_PER_HARI = 1000
+MAKSIMAL_DENDA = 50000
+
+# layanan/aturan.py
+def hitung_denda(tipe_anggota: str, tgl_jatuh_tempo: date, tgl_kembali: date) -> tuple[int, int]:
+    """Menghitung jumlah hari keterlambatan dan denda."""
+    telat = (tgl_kembali - tgl_jatuh_tempo).days
+    if telat <= 0 or tipe_anggota == "dosen":
+        return max(telat, 0), 0
+    denda = min(telat * TARIF_DENDA_PER_HARI, MAKSIMAL_DENDA)
+    return telat, denda
+```
+
+---
+
+### Kasus B: Akses I/O Berkas `data.json` (*Information Hiding*)
+
+**Sebelum (Kode Monolitik di `app.py` Lama):**
+> Operasi `open()` dan `json.load`/`dump` tercecer di **11 tempat berbeda** di dalam fungsi route HTTP:
+```python
+# Contoh di route /pinjam, /kembali, /api/pinjam, dll.
+with open(DATA_FILE, encoding="utf-8") as f:
+    data = json.load(f)
+...
+with open(DATA_FILE, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+```
+
+**Sesudah (Modular: `repositori/json_repo.py`):**
+> Seluruh rute dan layanan tidak lagi tahu bahwa data disimpan di berkas JSON:
+```python
+# repositori/json_repo.py
+class RepositoriJson:
+    def __init__(self, path: str):
+        self.path = path
+
+    def muat(self) -> dict:
+        with open(self.path, encoding="utf-8") as f:
+            return json.load(f)
+
+    def simpan(self, data: dict) -> None:
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+```
+
+---
+
+### Kasus C: Pencarian Katalog & Ketersediaan Buku
+
+**Sebelum (Kode Monolitik di `app.py` Lama):**
+> Kueri pencarian, filter, dan perhitungan eksemplar bersarang di fungsi route:
+```python
+# Di route / (baris 18-24)
+for b in data["buku"]:
+    if q == "" or q in b["judul"].lower() or q in b["penulis"].lower():
+        dipinjam = 0
+        for p in data["peminjaman"]:
+            if p["isbn"] == b["isbn"] and p["tgl_kembali"] is None:
+                dipinjam += 1
+        hasil.append({"isbn": b["isbn"], "judul": b["judul"], "penulis": b["penulis"],
+                      "tersedia": b["eksemplar"] - dipinjam, "eksemplar": b["eksemplar"]})
+```
+
+**Sesudah (Modular: `layanan/katalog.py`):**
+> Dipecah menjadi 2 fungsi spesifik yang dapat diuji mandiri (*unit-testable*):
+```python
+# layanan/katalog.py
+def hitung_eksemplar_tersedia(buku: dict, daftar_peminjaman: list[dict]) -> int:
+    dipinjam = sum(1 for p in daftar_peminjaman if p["isbn"] == buku["isbn"] and p["tgl_kembali"] is None)
+    return buku["eksemplar"] - dipinjam
+
+def cari_katalog(daftar_buku: list[dict], daftar_peminjaman: list[dict], keyword: str = "") -> list[dict]:
+    q = keyword.strip().lower()
+    hasil = []
+    for b in daftar_buku:
+        if q == "" or q in b["judul"].lower() or q in b["penulis"].lower():
+            hasil.append({**b, "tersedia": hitung_eksemplar_tersedia(b, daftar_peminjaman)})
+    return hasil
+```
+
+---
+
+### Kasus D: Antarmuka Web (String HTML Inline vs Template Jinja2)
+
+**Sebelum (Kode Monolitik di `app.py` Lama):**
+> String HTML hardcoded bercampur di kode Python:
+```python
+return render_template_string("""
+<html><head><title>Perpustakaan</title><style>body{margin:30px} ...</style></head>
+<body>""" + NAV + """<h1>Katalog Buku</h1>
+<form><input name="q" value="{{ q }}"><button>Cari</button></form>
+<table><tr><th>ISBN</th><th>Judul</th>...</tr>...</table>
+</body></html>""", hasil=hasil, q=q)
+```
+
+**Sesudah (Modular: `rute/web.py` & `templates/katalog.html`):**
+> Rute web bersih, tampilan dipisahkan ke template dengan pewarisan layout:
+```python
+# rute/web.py
+@web.route("/")
+def index():
+    q = request.args.get("q", "").strip()
+    data = _repo().muat()
+    hasil = cari_katalog(data["buku"], data["peminjaman"], q)
+    return render_template("katalog.html", hasil=hasil, q=q)
+```
+
+---
+
+### Kasus E: File Utama `app.py`
+
+**Sebelum:** 300 baris kode monolitik menumpuk rute, database, aturan bisnis, dan template.  
+**Sesudah:** 26 baris bersih menggunakan pola *Application Factory*:
+```python
+# app.py
+from flask import Flask
+import config
+from repositori import RepositoriJson
+from rute import api, web
+from utils.format import format_rupiah
+
+def create_app(repo=None) -> Flask:
+    app = Flask(__name__)
+    app.config["REPO"] = repo or RepositoriJson(config.DATA_FILE)
+    app.jinja_env.filters["rupiah"] = format_rupiah
+    app.register_blueprint(web)
+    app.register_blueprint(api, url_prefix="/api")
+    return app
+
+app = create_app()
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
+```
+
+---
+
+## 7. Temuan Code Smell & Inkonsistensi
 
 1. **Magic Numbers Tersebar:** Angka `1000`, `50000`, `3`, `10`, `7`, `14` tertulis berulang kali di berbagai fungsi route.  
    *Solusi:* Dipusatkan ke konstanta bernama di `config.py`.
@@ -162,7 +324,7 @@ Tabel pemetaan refaktorisasi dari blok monolitik lama ke fungsi dan modul baru:
 
 ---
 
-## 7. Bukti Verifikasi (Cek Cepat Sebelum vs Sesudah)
+## 8. Bukti Verifikasi (Cek Cepat Sebelum vs Sesudah)
 
 Pengujian dilakukan menggunakan perintah uji *Cek Cepat* dari spesifikasi tugas. Hasil sebelum dan sesudah modularisasi terbukti **identik**:
 
@@ -226,6 +388,7 @@ curl -s -X POST localhost:5000/api/kembali -H 'Content-Type: application/json' \
 
 ---
 
-## 8. Kesimpulan
+## 9. Kesimpulan
 
 Refaktorisasi aplikasi Perpustakaan Kampus telah berhasil mengubah kode monolitik menjadi aplikasi yang modular, bersih (*clean code*), mudah dipelihara (*maintainable*), dan siap diuji dengan unit test pada tahapan berikutnya, dengan tetap menjaga integritas fungsional 100%.
+
