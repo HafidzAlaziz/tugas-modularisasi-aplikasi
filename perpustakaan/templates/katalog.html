@@ -1,0 +1,19 @@
+{% extends "layout.html" %}
+
+{% block title %}Katalog Buku — Perpustakaan{% endblock %}
+
+{% block content %}
+    <h1>Katalog Buku</h1>
+    <form><input name="q" value="{{ q }}" placeholder="judul atau penulis"><button>Cari</button></form>
+    <table>
+        <tr><th>ISBN</th><th>Judul</th><th>Penulis</th><th>Tersedia</th></tr>
+        {% for b in hasil %}
+        <tr>
+            <td>{{ b.isbn }}</td>
+            <td>{{ b.judul }}</td>
+            <td>{{ b.penulis }}</td>
+            <td>{{ b.tersedia }} / {{ b.eksemplar }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+{% endblock %}

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Perpustakaan{% endblock %}</title>
+    <style>
+        body { font-family: Georgia, serif; margin: 30px; }
+        td, th { border-bottom: 1px solid #ddd; padding: 6px 12px; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/">Katalog</a> | 
+        <a href="/pinjam">Pinjam</a> | 
+        <a href="/kembali">Kembalikan</a> | 
+        <a href="/peminjaman">Daftar Peminjaman</a> | 
+        <a href="/terlambat">Terlambat</a>
+    </nav>
+    {% block content %}{% endblock %}
+</body>
+</html>

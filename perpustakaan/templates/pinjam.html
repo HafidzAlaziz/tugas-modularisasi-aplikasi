@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+
+{% block title %}Pinjam — Perpustakaan{% endblock %}
+
+{% block content %}
+    <h1>Peminjaman</h1>
+    <p><b>{{ pesan }}</b></p>
+    <form method="post">
+        ID anggota <input name="anggota"> ISBN <input name="isbn"> <button>Pinjam</button>
+    </form>
+{% endblock %}

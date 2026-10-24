@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+
+{% block title %}Daftar Peminjaman — Perpustakaan{% endblock %}
+
+{% block content %}
+    <h1>Daftar Peminjaman</h1>
+    <form>
+        Status 
+        <select name="status">
+            <option value="" {% if not status %}selected{% endif %}>semua</option>
+            <option value="dipinjam" {% if status == 'dipinjam' %}selected{% endif %}>dipinjam</option>
+            <option value="terlambat" {% if status == 'terlambat' %}selected{% endif %}>terlambat</option>
+            <option value="kembali" {% if status == 'kembali' %}selected{% endif %}>kembali</option>
+        </select> 
+        ID anggota <input name="anggota" value="{{ anggota }}" size="6"> 
+        <button>Tampilkan</button>
+    </form>
+    <table>
+        <tr>
+            <th>Kode</th>
+            <th>Peminjam</th>
+            <th>Judul</th>
+            <th>Pinjam</th>
+            <th>Jatuh tempo</th>
+            <th>Kembali</th>
+            <th>Denda</th>
+            <th>Status</th>
+        </tr>
+        {% for p in daftar %}
+        <tr>
+            <td>{{ p.id }}</td>
+            <td>{{ p.nama }} ({{ p.anggota }})</td>
+            <td>{{ p.judul }}</td>
+            <td>{{ p.tgl_pinjam }}</td>
+            <td>{{ p.jatuh_tempo }}</td>
+            <td>{{ p.tgl_kembali or '-' }}</td>
+            <td>{{ p.denda|rupiah }}</td>
+            <td style="color: {{ {'kembali': '#2e7d32', 'terlambat': '#c62828', 'dipinjam': '#1565c0'}[p.status] }}">
+                <b>{{ p.status }}</b>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+{% endblock %}

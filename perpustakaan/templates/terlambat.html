@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+
+{% block title %}Terlambat — Perpustakaan{% endblock %}
+
+{% block content %}
+    <h1>Peminjaman Terlambat</h1>
+    <ul>
+        {% for d in daftar %}
+        <li>{{ d.id }} — {{ d.nama }}: <i>{{ d.judul }}</i>, terlambat {{ d.hari }} hari</li>
+        {% else %}
+        <li>Tidak ada</li>
+        {% endfor %}
+    </ul>
+{% endblock %}

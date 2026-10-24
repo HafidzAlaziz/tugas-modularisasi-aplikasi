@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+
+{% block title %}Kembali — Perpustakaan{% endblock %}
+
+{% block content %}
+    <h1>Pengembalian</h1>
+    <p><b>{{ pesan }}</b></p>
+    <form method="post">
+        Kode peminjaman <input name="kode"> <button>Kembalikan</button>
+    </form>
+{% endblock %}
