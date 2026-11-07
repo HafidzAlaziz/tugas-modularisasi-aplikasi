@@ -250,3 +250,149 @@ curl -s -X POST localhost:5000/api/kembali -H 'Content-Type: application/json' \
 7. **Kode peminjaman:** Format otomatis `PJnnnn` di `layanan/aturan.py`.
 8. **Status peminjaman:** `kembali`, `terlambat`, atau `dipinjam` di `layanan/sirkulasi.py`.
 9. **Riwayat anggota:** Jumlah pinjam, sedang dipinjam, dan total denda di `layanan/sirkulasi.py`.
+
+---
+
+## Pengujian Perangkat Lunak (Unit Test & Integration Test)
+
+Pengujian dibagi menjadi dua jenis sesuai arsitektur modular:
+
+| File Test | Jenis Pengujian | Target Modul yang Diuji | Cakupan Pengujian |
+|---|---|---|---|
+| `tests/test_aturan.py` | **Unit Test** | `layanan/aturan.py`, `utils/format.py` | Kuota pinjam, durasi hari, jatuh tempo, kalkulasi denda, format kode `PJnnnn`, format rupiah |
+| `tests/test_katalog.py` | **Unit Test** | `layanan/katalog.py` | Hitung stok eksemplar tersedia & pencarian buku (*case-insensitive*) |
+| `tests/test_peminjaman.py` | **Integration Test** | `layanan/sirkulasi.py` + DB JSON | Alur peminjaman buku: kondisi sukses vs kondisi galat (anggota nonaktif, buku tidak ada, stok habis, kuota limit) |
+| `tests/test_pengembalian.py` | **Integration Test** | `layanan/sirkulasi.py` + DB JSON | Alur pengembalian buku: tepat waktu, telat denda mahasiswa, bebas denda dosen, kode salah, dan daftar keterlambatan |
+
+> **Catatan Isolasi Database:** Integration test menggunakan database tiruan (`test_data_pinjam.json` & `test_data_kembali.json`) yang dibuat pada `setUp` dan dihapus pada `tearDown`, sehingga data produksi di `data.json` tetap aman dan tidak tercemar.
+
+---
+
+### 1. Unit Test — Aturan Sirkulasi & Format (`tests/test_aturan.py`)
+
+Menguji fungsi kalkulasi bisnis murni secara terisolasi tanpa akses database atau Flask.
+
+```bash
+python3 -m unittest tests.test_aturan -v
+```
+
+**Hasil Eksekusi Test:**
+
+![Hasil Test Aturan](docs/img/test_aturan.png)
+
+---
+
+### 2. Unit Test — Katalog & Eksemplar Buku (`tests/test_katalog.py`)
+
+Menguji logika pencarian buku berdasarkan judul/penulis serta kalkulasi sisa eksemplar fisik yang tersedia.
+
+```bash
+python3 -m unittest tests.test_katalog -v
+```
+
+**Hasil Eksekusi Test:**
+
+![Hasil Test Katalog](docs/img/test_katalog.png)
+
+---
+
+### 3. Integration Test — Alur Peminjaman Buku (`tests/test_peminjaman.py`)
+
+Menguji alur peminjaman buku yang mengintegrasikan validasi anggota, stok katalog, penomoran kode transaksi, dan penyimpanan ke file database JSON.
+
+- **Kondisi Input Benar:** Mahasiswa aktif (+7 hari), Dosen aktif (+14 hari).
+- **Kondisi Input Salah:** Anggota nonaktif, ID anggota tidak ada, ISBN tidak ada, stok eksemplar habis, kuota 3 buku terlampaui.
+
+```bash
+python3 -m unittest tests.test_peminjaman -v
+```
+
+**Hasil Eksekusi Test:**
+
+![Hasil Test Peminjaman](docs/img/test_peminjaman.png)
+
+---
+
+### 4. Integration Test — Alur Pengembalian & Denda (`tests/test_pengembalian.py`)
+
+Menguji alur pengembalian buku, kalkulasi denda keterlambatan, pembebasan denda untuk dosen, dan query daftar keterlambatan.
+
+- **Kondisi Input Benar:** Tepat waktu (denda Rp 0), mahasiswa telat (Rp 1.000/hari), dosen telat (Rp 0), daftar telat valid.
+- **Kondisi Input Salah:** Kode transaksi tidak ada, kode transaksi sudah pernah dikembalikan sebelumnya, filter status tidak dikenal.
+
+```bash
+python3 -m unittest tests.test_pengembalian -v
+```
+
+**Hasil Eksekusi Test:**
+
+![Hasil Test Pengembalian](docs/img/test_pengembalian.png)
+
+---
+
+### 5. Menjalankan Seluruh Test Sekaligus (Test Suite Discovery)
+
+Menjalankan seluruh pengujian unit test dan integration test secara otomatis (total 41 pengujian).
+
+```bash
+python3 -m unittest discover -s tests -t . -v
+```
+
+**Hasil Eksekusi Test Keseluruhan (41/41 Lulus):**
+
+![Hasil Seluruh Test](docs/img/test_semua.png)
+
+---
+
+## Cara Membuat Test Gagal (Simulasi Deteksi Bug)
+
+Untuk mendemonstrasikan bagaimana automated testing mendeteksi bug atau regresi kode, baik pada level **Unit Test** maupun **Integration Test**:
+
+### Simulasi 1 — Bug pada Unit Test (`tests/test_aturan.py`)
+
+Ubah sementara konfigurasi aturan tarif denda per hari di `config.py` dari `1000` menjadi `2000`:
+
+```python
+# config.py (sebelum)
+TARIF_DENDA_PER_HARI = 1000
+
+# config.py (sesudah - simulasi bug)
+TARIF_DENDA_PER_HARI = 2000
+```
+
+Jalankan Unit Test:
+```bash
+python3 -m unittest tests.test_aturan -v
+```
+
+**Hasil Eksekusi Unit Test Mendeteksi Bug (`FAIL`):**
+
+![Hasil Simulasi Gagal Unit Test](docs/img/simulasi_gagal_unit.png)
+
+> **Analisis:** Method `test_denda_terlambat_mahasiswa` mendeteksi bahwa denda keterlambatan 5 hari menghasilkan nilai `Rp 10.000`, padahal kunci jawaban/ekspektasi spesifikasi adalah `Rp 5.000` (`AssertionError: 10000 != 5000`). Test otomatis langsung berstatus `FAIL`.
+
+---
+
+### Simulasi 2 — Bug pada Integration Test (`tests/test_peminjaman.py`)
+
+Hapus atau beri komentar sementara pada baris validasi status keaktifan anggota di `layanan/sirkulasi.py`:
+
+```python
+# layanan/sirkulasi.py (simulasi bug - validasi anggota dimatikan)
+# if anggota is None or not anggota.get("aktif", False):
+#     raise GalatValidasi("Anggota tidak ditemukan atau tidak aktif")
+```
+
+Jalankan Integration Test:
+```bash
+python3 -m unittest tests.test_peminjaman -v
+```
+
+**Hasil Eksekusi Integration Test Mendeteksi Bug (`FAIL`):**
+
+![Hasil Simulasi Gagal Integration Test](docs/img/simulasi_gagal_integration.png)
+
+> **Analisis:** Method `test_pinjam_buku_anggota_tidak_aktif` mengharapkan sistem melempar galat penolakan `GalatValidasi`. Karena validasi dimatikan, sistem meloloskan peminjaman anggota nonaktif, sehingga test gagal dengan pesan `AssertionError: GalatValidasi not raised`.
+
+
+
