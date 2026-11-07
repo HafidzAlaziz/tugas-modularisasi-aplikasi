@@ -45,6 +45,157 @@ perpustakaan/
 
 ---
 
+## Alur Kerja Program (Flowchart)
+
+Diagram di bawah memakai bahasa sehari-hari supaya mudah dipahami. Semuanya ditulis dengan Mermaid, jadi tampil otomatis di GitHub.
+
+### Gambaran Besar
+
+```mermaid
+flowchart TD
+    U["Pengguna / aplikasi lain"] --> W["Halaman web"]
+    U --> A["Jalur aplikasi lain"]
+    W --> L["Aturan perpustakaan<br/>pinjam, kembali, denda, cari buku"]
+    A --> L
+    L --> P["Penyimpan data<br/>membaca dan menyimpan"]
+    L -.-> C["Pengaturan<br/>angka batas dan denda"]
+    M["Pintu masuk<br/>menyalakan aplikasi"] -.-> P
+    P --> D[("Berkas data")]
+```
+
+| Istilah di diagram | Lokasi di proyek |
+|--------------------|------------------|
+| Halaman web | `rute/web.py` dan `templates/` |
+| Jalur aplikasi lain | `rute/api.py` |
+| Aturan perpustakaan | `layanan/` |
+| Penyimpan data | `repositori/json_repo.py` |
+| Pengaturan | `config.py` |
+| Pintu masuk | `app.py` |
+| Berkas data | `data.json` |
+
+### 1. Meminjam Buku
+
+Ada 4 pemeriksaan berurutan. Kalau salah satu gagal, peminjaman ditolak.
+
+```mermaid
+flowchart TD
+    A["Pengguna ingin meminjam"] --> B["Buka data perpustakaan"]
+    B --> C{"Anggota terdaftar dan aktif?"}
+    C -->|tidak| X["Peminjaman ditolak<br/>pengguna diberi tahu alasannya"]
+    C -->|ya| D{"Bukunya ada di perpustakaan?"}
+    D -->|tidak| X
+    D -->|ya| E{"Belum melebihi batas pinjam?"}
+    E -->|tidak| X
+    E -->|ya| F{"Masih ada stok buku?"}
+    F -->|tidak| X
+    F -->|ya| G["Tentukan batas kembali<br/>7 hari mahasiswa, 14 hari dosen"]
+    G --> H["Simpan data peminjaman"]
+    H --> I["Berhasil, tampil kode pinjam"]
+    classDef tolak fill:#fdecea,stroke:#c62828,color:#501313
+    classDef sukses fill:#eaf3de,stroke:#3b6d11,color:#173404
+    class X tolak
+    class I sukses
+```
+
+### 2. Mengembalikan Buku
+
+```mermaid
+flowchart TD
+    A["Pengguna mengembalikan buku"] --> B["Buka data perpustakaan"]
+    B --> C{"Kode pinjam benar?"}
+    C -->|tidak| X["Pengembalian ditolak<br/>kode salah atau sudah kembali"]
+    C -->|ya| D["Hitung berapa hari terlambat"]
+    D --> E{"Tepat waktu atau dosen?"}
+    E -->|ya| F["Tidak ada denda"]
+    E -->|tidak| G["Hitung denda<br/>Rp 1.000 per hari, maksimal Rp 50.000"]
+    F --> H["Simpan tanggal kembali dan denda"]
+    G --> H
+    H --> I["Berhasil, tampil jumlah denda"]
+    classDef tolak fill:#fdecea,stroke:#c62828,color:#501313
+    classDef sukses fill:#eaf3de,stroke:#3b6d11,color:#173404
+    class X tolak
+    class I sukses
+```
+
+### 3. Batas Pinjam dan Lama Pinjam
+
+Jumlah buku dan lama pinjam tergantung siapa yang meminjam.
+
+```mermaid
+flowchart TD
+    A{"Siapa yang meminjam?"} -->|mahasiswa atau lainnya| B["Maksimal 3 buku<br/>lama pinjam 7 hari"]
+    A -->|dosen| C["Maksimal 10 buku<br/>lama pinjam 14 hari"]
+    B --> D["Hitung pinjaman berjalan<br/>buku yang belum dikembalikan"]
+    C --> D
+    D --> E{"Sudah mencapai batas?"}
+    E -->|ya| X["Ditolak, batas tercapai"]
+    E -->|tidak| F{"Masih ada stok buku?"}
+    F -->|tidak| Y["Ditolak, stok habis"]
+    F -->|ya| G["Tentukan tanggal kembali<br/>tanggal pinjam ditambah lama pinjam"]
+    G --> H["Peminjaman berhasil"]
+    classDef tolak fill:#fdecea,stroke:#c62828,color:#501313
+    classDef sukses fill:#eaf3de,stroke:#3b6d11,color:#173404
+    class X,Y tolak
+    class H sukses
+```
+
+### 4. Histori Peminjaman
+
+Melihat daftar semua peminjaman, bisa disaring berdasarkan status dan anggota.
+
+```mermaid
+flowchart TD
+    A["Lihat daftar peminjaman"] --> B{"Pilihan status benar?"}
+    B -->|tidak| X["Permintaan ditolak"]
+    B -->|ya| C["Tentukan status tiap data<br/>dipinjam, terlambat, atau kembali"]
+    C --> D["Saring sesuai status dan anggota"]
+    D --> E["Lengkapi nama anggota dan judul buku"]
+    E --> F["Tampilkan daftar peminjaman"]
+    classDef tolak fill:#fdecea,stroke:#c62828,color:#501313
+    classDef sukses fill:#eaf3de,stroke:#3b6d11,color:#173404
+    class X tolak
+    class F sukses
+```
+
+### 5. Riwayat Satu Anggota
+
+Fitur ini hanya tersedia lewat jalur aplikasi lain (`/api/anggota/<id>/riwayat`), tidak ada halaman web-nya.
+
+```mermaid
+flowchart TD
+    A["Lihat riwayat satu anggota"] --> B["Kumpulkan semua pinjaman anggota<br/>ID tidak dikenal hasilnya nol"]
+    B --> C["Hitung ringkasan<br/>total pinjam, sedang dipinjam, total denda"]
+    C --> D["Tampilkan ringkasan riwayat"]
+    classDef sukses fill:#eaf3de,stroke:#3b6d11,color:#173404
+    class D sukses
+```
+
+### 6. Cari Buku di Katalog
+
+```mermaid
+flowchart TD
+    A["Cari buku di katalog"] --> B["Cocokkan dengan judul atau penulis"]
+    B --> C["Hitung stok yang tersedia<br/>jumlah total dikurangi yang dipinjam"]
+    C --> D["Tampilkan daftar buku"]
+    classDef sukses fill:#eaf3de,stroke:#3b6d11,color:#173404
+    class D sukses
+```
+
+### 7. Daftar Terlambat
+
+```mermaid
+flowchart TD
+    A["Lihat daftar terlambat"] --> B["Ambil buku yang belum kembali"]
+    B --> C{"Sudah lewat batas kembali?"}
+    C -->|tidak| D["Tidak dimasukkan ke daftar"]
+    C -->|ya| E["Hitung berapa hari telatnya"]
+    E --> F["Tampilkan daftar terlambat"]
+    classDef sukses fill:#eaf3de,stroke:#3b6d11,color:#173404
+    class F sukses
+```
+
+---
+
 ## Cara Menjalankan
 
 ### Dengan Docker
