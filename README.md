@@ -278,7 +278,7 @@ python3 -m unittest tests.test_aturan -v
 
 **Hasil Eksekusi Test:**
 
-![Hasil Test Aturan](docs/img/test_aturan.png)
+![Hasil Test Aturan](SESUDAH/docs/img/test_aturan.png)
 
 ---
 
@@ -292,7 +292,7 @@ python3 -m unittest tests.test_katalog -v
 
 **Hasil Eksekusi Test:**
 
-![Hasil Test Katalog](docs/img/test_katalog.png)
+![Hasil Test Katalog](SESUDAH/docs/img/test_katalog.png)
 
 ---
 
@@ -309,7 +309,7 @@ python3 -m unittest tests.test_peminjaman -v
 
 **Hasil Eksekusi Test:**
 
-![Hasil Test Peminjaman](docs/img/test_peminjaman.png)
+![Hasil Test Peminjaman](SESUDAH/docs/img/test_peminjaman.png)
 
 ---
 
@@ -326,7 +326,7 @@ python3 -m unittest tests.test_pengembalian -v
 
 **Hasil Eksekusi Test:**
 
-![Hasil Test Pengembalian](docs/img/test_pengembalian.png)
+![Hasil Test Pengembalian](SESUDAH/docs/img/test_pengembalian.png)
 
 ---
 
@@ -340,7 +340,7 @@ python3 -m unittest discover -s tests -t . -v
 
 **Hasil Eksekusi Test Keseluruhan (41/41 Lulus):**
 
-![Hasil Seluruh Test](docs/img/test_semua.png)
+![Hasil Seluruh Test](SESUDAH/docs/img/test_semua.png)
 
 ---
 
@@ -367,7 +367,7 @@ python3 -m unittest tests.test_aturan -v
 
 **Hasil Eksekusi Unit Test Mendeteksi Bug (`FAIL`):**
 
-![Hasil Simulasi Gagal Unit Test](docs/img/simulasi_gagal_unit.png)
+![Hasil Simulasi Gagal Unit Test](SESUDAH/docs/img/simulasi_gagal_unit.png)
 
 > **Analisis:** Method `test_denda_terlambat_mahasiswa` mendeteksi bahwa denda keterlambatan 5 hari menghasilkan nilai `Rp 10.000`, padahal kunci jawaban/ekspektasi spesifikasi adalah `Rp 5.000` (`AssertionError: 10000 != 5000`). Test otomatis langsung berstatus `FAIL`.
 
@@ -390,7 +390,7 @@ python3 -m unittest tests.test_peminjaman -v
 
 **Hasil Eksekusi Integration Test Mendeteksi Bug (`FAIL`):**
 
-![Hasil Simulasi Gagal Integration Test](docs/img/simulasi_gagal_integration.png)
+![Hasil Simulasi Gagal Integration Test](SESUDAH/docs/img/simulasi_gagal_integration.png)
 
 > **Analisis:** Method `test_pinjam_buku_anggota_tidak_aktif` mengharapkan sistem melempar galat penolakan `GalatValidasi`. Karena validasi dimatikan, sistem meloloskan peminjaman anggota nonaktif, sehingga test gagal dengan pesan `AssertionError: GalatValidasi not raised`.
 
